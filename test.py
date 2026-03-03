@@ -19,7 +19,7 @@ from utils import test_single_volume
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
                     default='../data/Synapse/test_vol_h5',
-                    help='root dir for validation volume data')  # for acdc volume_path=root_dir
+                    help='root dir for validation volume data')  # for acdc root_path=root_dir
 parser.add_argument('--dataset', type=str,
                     default='datasets', help='experiment_name')
 parser.add_argument('--num_classes', type=int,
@@ -28,8 +28,8 @@ parser.add_argument('--list_dir', type=str,
                     default='./lists/lists_Synapse', help='list dir')
 parser.add_argument('--output_dir', type=str, help='output dir')
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
-parser.add_argument('--max_epochs', type=int, default=150, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=24,
+parser.add_argument('--max_epochs', type=int, default=50, help='maximum epoch number to train')
+parser.add_argument('--batch_size', type=int, default=1,
                     help='batch_size per gpu')
 parser.add_argument('--img_size', type=int, default=224, help='input patch size of network input')
 parser.add_argument('--is_savenii', action="store_true", help='whether to save results during inference')
@@ -65,12 +65,12 @@ parser.add_argument("--split_name", default="test", help="Directory of the input
 args = parser.parse_args()
 
 if args.dataset == "Synapse":
-    args.volume_path = os.path.join(args.volume_path, "test_vol_h5")
+    args.root_path = os.path.join(args.root_path, "test_vol_h5")
 config = get_config(args)
 
 
 def inference(args, model, test_save_path=None):
-    db_test = Synapse_dataset(base_dir=args.volume_path, split=args.split_name, list_dir=args.list_dir)
+    db_test = Synapse_dataset(base_dir=args.root_path, split=args.split_name, list_dir=args.list_dir)
     testloader = DataLoader(db_test, batch_size=1, shuffle=False, num_workers=1)
     logging.info("{} test iterations per epoch".format(len(testloader)))
     model.eval()
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         },
     }
     args.num_classes = dataset_config[dataset_name]['num_classes']
-    args.volume_path = dataset_config[dataset_name]['root_path']
+    args.root_path = dataset_config[dataset_name]['root_path']
     # args.Dataset = dataset_config[dataset_name]['Dataset']
     args.list_dir = dataset_config[dataset_name]['list_dir']
     args.z_spacing = dataset_config[dataset_name]['z_spacing']
