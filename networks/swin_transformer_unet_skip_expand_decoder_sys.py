@@ -4,7 +4,25 @@ import torch.utils.checkpoint as checkpoint
 from einops import rearrange
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
+class FFParser(nn.Module):
+    def __init__(self, dim, H, W):
+        super().__init__()
+        self.H = H
+        self.W = W
+        w_complex = W // 2 + 1
+        self.complex_weight = nn.Parameter(torch.randn(dim, H, w_complex, 2, dtype=torch.float32) * 0.02)
 
+    def forward(self, x):
+        B, L, C = x.shape
+        x = x.view(B, self.H, self.W, C).permute(0, 3, 1, 2).contiguous()
+        x = x.to(torch.float32)
+        x_fft = torch.fft.rfft2(x, dim=(2, 3), norm='ortho')
+        weight = torch.view_as_complex(self.complex_weight)
+        x_fft = x_fft * weight
+        x_ifft = torch.fft.irfft2(x_fft, s=(self.H, self.W), dim=(2, 3), norm='ortho')
+        x_out = x_ifft.permute(0, 2, 3, 1).contiguous().view(B, L, C)
+        return x_out
+        
 class MoEFFNGating(nn.Module):
     def __init__(self, dim, hidden_dim, num_experts):
         super(MoEFFNGating, self).__init__()
@@ -665,12 +683,27 @@ class SwinTransformerSys(nn.Module):
             self.layers.append(layer)
 
         # build decoder layers
+        # build decoder layers
         self.layers_up = nn.ModuleList()
         self.concat_back_dim = nn.ModuleList()
+        
+        self.ff_parsers = nn.ModuleList() # <--- THÊM DÒNG NÀY
+
         for i_layer in range(self.num_layers):
             concat_linear = nn.Linear(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
                                       int(embed_dim * 2 ** (
                                                   self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
+            
+            # <--- THÊM BLOCK NÀY ĐỂ TÍNH TOÁN KÍCH THƯỚC & KHỞI TẠO FF-PARSER --->
+            if i_layer > 0:
+                skip_dim = int(embed_dim * 2 ** (self.num_layers - 1 - i_layer))
+                skip_H = patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer))
+                skip_W = patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))
+                self.ff_parsers.append(FFParser(dim=skip_dim, H=skip_H, W=skip_W))
+            else:
+                self.ff_parsers.append(nn.Identity()) # i_layer == 0 là đáy Bottleneck, không có Skip Connection
+            # <-------------------------------------------------------------------->
+
             if i_layer == 0:
                 layer_up = PatchExpand(
                     input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
@@ -740,12 +773,18 @@ class SwinTransformerSys(nn.Module):
         return x, x_downsample
 
     # Dencoder and Skip connection
+    # Dencoder and Skip connection
     def forward_up_features(self, x, x_downsample):
         for inx, layer_up in enumerate(self.layers_up):
             if inx == 0:
                 x = layer_up(x)
             else:
-                x = torch.cat([x, x_downsample[3 - inx]], -1)
+                # <--- SỬA TẠI ĐÂY: CHO TENSOR QUA FF-PARSER TRƯỚC KHI NỐI --->
+                skip_x = x_downsample[3 - inx]
+                skip_x = self.ff_parsers[inx](skip_x)
+                
+                x = torch.cat([x, skip_x], -1)
+                # <----------------------------------------------------------->
                 x = self.concat_back_dim[inx](x)
                 x = layer_up(x)
 

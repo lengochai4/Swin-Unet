@@ -64,21 +64,33 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
     if len(image.shape) == 3:
         prediction = np.zeros_like(label)
         for ind in range(image.shape[0]):
-            slice = image[ind, :, :]
-            x, y = slice.shape[0], slice.shape[1]
+            # clamp neighbors
+            p = max(ind - 1, 0)
+            n = min(ind + 1, image.shape[0] - 1)
+
+            slice_p = image[p, :, :]
+            slice_c = image[ind, :, :]
+            slice_n = image[n, :, :]
+
+            stack = np.stack([slice_p, slice_c, slice_n], axis=0)  # (3,H,W)
+
+            x, y = slice_c.shape[0],slice_c.shape[1]
             if x != patch_size[0] or y != patch_size[1]:
-                slice = zoom(slice, (patch_size[0] / x, patch_size[1] / y), order=3)  # previous using 0
-            input = torch.from_numpy(slice).unsqueeze(0).unsqueeze(0).float().cuda()
+                stack = zoom(stack, (1, patch_size[0]/x, patch_size[1]/y), order=3)
+
+            input = torch.from_numpy(stack).unsqueeze(0).float().cuda()  # (1,3,H,W)
+            
             net.eval()
             with torch.no_grad():
                 outputs = net(input)
-                out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
-                out = out.cpu().detach().numpy()
-                if x != patch_size[0] or y != patch_size[1]:
-                    pred = zoom(out, (x / patch_size[0], y / patch_size[1]), order=0)
-                else:
-                    pred = out
-                prediction[ind] = pred
+                out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0).cpu().numpy()
+
+            if x != patch_size[0] or y != patch_size[1]:
+                pred = zoom(out, (x/patch_size[0], y/patch_size[1]), order=0)
+            else:
+                pred = out
+
+            prediction[ind] = pred
     else:
         input = torch.from_numpy(image).unsqueeze(
             0).unsqueeze(0).float().cuda()
