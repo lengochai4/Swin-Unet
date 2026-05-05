@@ -32,7 +32,6 @@ def trainer_synapse(args, model, snapshot_path):
                              transform=transforms.Compose(
                                  [RandomGenerator(output_size=[args.img_size, args.img_size])]))
     print("The length of train set is: {}".format(len(db_train)))
-    print("The length of val set is: {}".format(len(db_val)))
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
@@ -43,7 +42,7 @@ def trainer_synapse(args, model, snapshot_path):
     val_loader = DataLoader(db_val, batch_size=batch_size, shuffle=False, num_workers=args.num_workers,
                             pin_memory=True,
                             worker_init_fn=worker_init_fn)
-    if args.n_gpu > 1:  
+    if args.n_gpu > 1:
         model = nn.DataParallel(model)
     model.train()
     ce_loss = CrossEntropyLoss()
@@ -64,6 +63,8 @@ def trainer_synapse(args, model, snapshot_path):
                                            leave=False):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
             image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
+            label_batch[label_batch >= num_classes] = 0
+            label_batch[label_batch < 0] = 0
             outputs = model(image_batch)
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)
@@ -106,6 +107,8 @@ def trainer_synapse(args, model, snapshot_path):
                                                    total=len(val_loader), leave=False):
                     image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
                     image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
+                    label_batch[label_batch >= num_classes] = 0
+                    label_batch[label_batch < 0] = 0
                     outputs = model(image_batch)
                     loss_ce = ce_loss(outputs, label_batch[:].long())
                     loss_dice = dice_loss(outputs, label_batch, softmax=True)

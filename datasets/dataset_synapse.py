@@ -11,28 +11,18 @@ from torch.utils.data import Dataset
 
 def random_rot_flip(image, label):
     k = np.random.randint(0, 4)
-    if image.ndim==3: #C,H,W
-        image=np.rot90(image,k,axes=(1,2))
-    else: #H,W
-        image = np.rot90(image, k)
+    image = np.rot90(image, k)
     label = np.rot90(label, k)
-    
-    axis_for_HW = np.random.randint(0, 2)
-    if image.ndim==3:
-        image = np.flip(image, axis=axis_for_HW+1).copy()
-    else:
-        image=np.flip(image, axis=axis_for_HW).copy()
-    label = np.flip(label, axis=axis_for_HW).copy()
+    axis = np.random.randint(0, 2)
+    image = np.flip(image, axis=axis).copy()
+    label = np.flip(label, axis=axis).copy()
     return image, label
 
 
 def random_rotate(image, label):
-    angle = np.random.randint(-10, 10)
-    if image.ndim==3:
-        image=ndimage.rotate(image, angle, axes=(1,2), order=1, reshape=False, mode="nearest")
-    else:    
-        image = ndimage.rotate(image, angle, order=1, reshape=False, mode="nearest")
-    label = ndimage.rotate(label, angle, order=0, reshape=False, mode="nearest")
+    angle = np.random.randint(-20, 20)
+    image = ndimage.rotate(image, angle, order=0, reshape=False)
+    label = ndimage.rotate(label, angle, order=0, reshape=False)
     return image, label
 
 
